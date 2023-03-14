@@ -1,6 +1,6 @@
 import argparse, os
 
-from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import  DDPMPipeline, DDIMPipeline, UNet2DConditionModel, UNet2DModel
 from transformers import CLIPTextModel
 from diffusers import AutoencoderKL
 from accelerate import Accelerator
@@ -33,7 +33,7 @@ def main():
         help="if specified, load prompts from this file",
     )
     parser.add_argument(
-        "--test_batch_size", type=int, default=8, help="Batch size (per device) for the training dataloader."
+        "--test_batch_size", type=int, default=32, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
         "--dataloader_num_workers",
@@ -45,37 +45,31 @@ def main():
     )
     accelerator = Accelerator()
     opt = parser.parse_args()
-    model_path = "/home/dongk/dkgroup/tsk/projects/diffusers/examples/text_to_image/sd-model-finetuned/checkpoint-30000/unet"
-    sample_path = "/home/dongk/dkgroup/tsk/projects/data/coco/results/zero_shot_fine_tune_30000_step_fp32"
+    model_path = "/home/dongk/dkgroup/tsk/projects/diffusers/ckpt/ddpm-cifar10-32"
+    # sample_path = "/home/dongk/dkgroup/tsk/projects/data/coco/results/zero_shot_fine_tune_30000_step_fp32"
     base_count = opt.samples_start
 
-    test_dataset = load_dataset("text", data_files={"test": opt.from_file})
-    test_dataloader = torch.utils.data.DataLoader(
-        test_dataset["test"],
-        shuffle=False,
-        batch_size=opt.test_batch_size,
-        num_workers=opt.dataloader_num_workers,
-    )
     # Define Three component of Stable Diffusion
-    text_encoder = CLIPTextModel.from_pretrained(
-        opt.pretrained_model_name_or_path, subfolder="text_encoder", torch_dtype=torch.float32)
-    vae = AutoencoderKL.from_pretrained(
-        opt.pretrained_model_name_or_path, subfolder="vae", torch_dtype=torch.float32)
-    unet = UNet2DConditionModel.from_pretrained(
-        model_path, torch_dtype=torch.float32)
+    unet = UNet2DModel.from_pretrained(
+    model_path, torch_dtype=torch.float32)
     
-    unet, dataloader = accelerator.prepare(unet, test_dataloader)
+    unet = accelerator.prepare(unet)
     
-    pipe = StableDiffusionPipeline.from_pretrained(
-        opt.pretrained_model_name_or_path, 
+    # pipe = StableDiffusionPipeline.from_pretrained(
+    #     opt.pretrained_model_name_or_path, 
+    #     unet=accelerator.unwrap_model(unet),
+    #     torch_dtype=torch.float32
+    #     )
+    # model_id = "google/ddpm-cifar10-32"
+    pipe = DDIMPipeline.from_pretrained(
         unet=accelerator.unwrap_model(unet),
-        torch_dtype=torch.float32
-        )
+        torch_dtype=torch.float32)
     pipe.to("cuda")
     start = time.time()
-    for idx, prompt in enumerate(dataloader):
-        images = pipe(prompt["text"],
-                     num_inference_steps=50, guidance_scale=7.5, output_type="latent").images
+    num_image = 50000
+    iters = num_image/opt.test_batch_size
+    for iter in range(iters):
+        images = pipe(batch_size=opt.test_batch_size).images
         accelerator.wait_for_everyone()
         images_all_process = accelerator.gather(images)
         for image in images_all_process:

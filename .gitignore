@@ -14,6 +14,7 @@ tests/fixtures/cached_*_text.txt
 logs/
 lightning_logs/
 lang_code_data/
+sd-model-finetuned/
 
 # Distribution / packaging
 .Python

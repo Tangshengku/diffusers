@@ -35,6 +35,8 @@ from .unet_2d_blocks import (
     get_up_block,
 )
 
+import torch.nn.functional as F
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -601,6 +603,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
+            if i == len(self.up_blocks) - 2:
+               sample = F.interpolate(sample, scale_factor=2.0, mode="nearest")
+               continue
+
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
